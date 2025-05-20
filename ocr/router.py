@@ -1,25 +1,18 @@
 from fastapi import APIRouter, UploadFile, File
 from PIL import Image
 import pytesseract
-import uuid
-import os
-import shutil
 import re
+from io import BytesIO
 
 router = APIRouter()
-UPLOAD_DIR = "uploads"
-os.makedirs(UPLOAD_DIR, exist_ok=True)
 
 @router.post("/ocr/job")
 async def extract_job_info(file: UploadFile = File(...)):
-    # Save the file
-    file_id = str(uuid.uuid4())
-    file_path = os.path.join(UPLOAD_DIR, f"{file_id}_{file.filename}")
-    with open(file_path, "wb") as buffer:
-        shutil.copyfileobj(file.file, buffer)
+    # Read image from in-memory file
+    contents = await file.read()
+    image = Image.open(BytesIO(contents))
 
     # OCR processing
-    image = Image.open(file_path)
     text = pytesseract.image_to_string(image)
     lines = [line.strip("•¢°*\\/- ") for line in text.split("\n") if line.strip()]
 
