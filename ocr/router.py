@@ -1,22 +1,19 @@
 from fastapi import APIRouter, UploadFile, File
-from PIL import Image
+from io import BytesIO
 import pytesseract
 import re
-from io import BytesIO
+from PIL import Image  # Required by pytesseract
 
 router = APIRouter()
 
 @router.post("/ocr/job")
 async def extract_job_info(file: UploadFile = File(...)):
-    # Read image from in-memory file
-    contents = await file.read()
-    image = Image.open(BytesIO(contents))
-
-    # OCR processing
+    # Read image directly into memory and run OCR
+    image = Image.open(BytesIO(await file.read()))
     text = pytesseract.image_to_string(image)
-    lines = [line.strip("•¢°*\\/- ") for line in text.split("\n") if line.strip()]
-
-    # Parse relevant info
+    
+    # Clean and split lines
+    lines = [line.strip("•¢°*\\/- ").strip() for line in text.splitlines() if line.strip()]
     result = parse_job_info(lines)
     return {"data": result}
 
@@ -35,25 +32,27 @@ def parse_job_info(lines: list[str]) -> dict:
     }
 
     for line in lines:
-        if "Hiring" in line:
-            data["title"] = "Product Advisor"
-        elif "SALARY" in line.upper():
-            match = re.search(r"(\d{4,6})\s*-\s*(\d{4,6})", line)
+        l = line.lower()
+
+        if "hiring" in l:
+            data["title"] = data["title"] or "Product Advisor"
+        elif "salary" in l:
+            match = re.search(r"(\d{4,6})\s*[-to]\s*(\d{4,6})", line)
             if match:
                 data["salary"] = f"{match.group(1)} - {match.group(2)}"
-        elif "INCENTIVE" in line.upper():
+        elif "incentive" in l:
             data["incentives"] = True
-        elif "Qualification" in line:
+        elif "qualification" in l:
             data["qualification"] = line.split(":")[-1].strip()
-        elif "Exp" in line or "Experience" in line:
+        elif "exp" in l or "experience" in l:
             data["experience"] = line.split(":")[-1].strip()
-        elif "Age Limit" in line:
+        elif "age limit" in l:
             data["age_limit"] = line.split(":")[-1].strip()
-        elif "Gender" in line:
+        elif "gender" in l:
             data["gender"] = line.split(":")[-1].strip()
-        elif "Location" in line:
+        elif "location" in l:
             data["location"] = line.split(":")[-1].strip()
-        elif "Resume" in line or re.search(r"\d{10}", line):
+        elif "resume" in l or re.search(r"\d{10}", line):
             phone_match = re.search(r"\d{10}", line)
             if phone_match:
                 data["contact"] = phone_match.group()
